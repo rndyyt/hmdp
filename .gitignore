@@ -31,4 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+
 /src/main/resources/nginx-1.18.0/nginx.exe
+/src/main/resources/nginx-1.18.0/
