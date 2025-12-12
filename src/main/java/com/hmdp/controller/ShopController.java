@@ -33,7 +33,8 @@ public class ShopController {
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
-        return Result.ok(shopService.getById(id));
+//        return shopService.queryById(id);
+        return shopService.queryByMutex(id); //使用互斥锁解决缓存击穿
     }
 
     /**
@@ -57,7 +58,8 @@ public class ShopController {
     @PutMapping
     public Result updateShop(@RequestBody Shop shop) {
         // 写入数据库
-        shopService.updateById(shop);
+        shopService.editById(shop);
+//        shopService.updateById(shop);
         return Result.ok();
     }
 

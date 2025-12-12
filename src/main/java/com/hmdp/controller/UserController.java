@@ -2,7 +2,6 @@ package com.hmdp.controller;
 
 
 import cn.hutool.core.lang.Validator;
-import cn.hutool.core.util.RandomUtil;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -15,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpSession;
 
 /**
  * <p>
@@ -40,7 +38,7 @@ public class UserController {
      * 发送手机验证码
      */
     @PostMapping("code")
-    public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
+    public Result sendCode(@RequestParam("phone") String phone) {
         // 1.校验手机号有效性
         if (!Validator.isMobile(phone)) {
             return Result.fail("手机号格式错误");
@@ -55,7 +53,7 @@ public class UserController {
      * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
      */
     @PostMapping("/login")
-    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session){
+    public Result login(@RequestBody LoginFormDTO loginForm){
         String phone = loginForm.getPhone();
         String code = loginForm.getCode();
         if (!Validator.isMobile(phone)) {
@@ -73,9 +71,8 @@ public class UserController {
      * @return 无
      */
     @PostMapping("/logout")
-    public Result logout(){
-        // TODO 实现登出功能
-        return Result.fail("功能未完成");
+    public Result logout(@RequestHeader("Authorization") String token){
+        return userService.logout(token);
     }
 
     @GetMapping("/me")
