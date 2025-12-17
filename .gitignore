@@ -33,4 +33,26 @@ build/
 .vscode/
 
 
-/src/main/resources/nginx-1.18.0/
+### Nginx ###
+/src/main/resources/nginx-1.18.0/contrib/
+/src/main/resources/nginx-1.18.0/docs/
+/src/main/resources/nginx-1.18.0/html/
+/src/main/resources/nginx-1.18.0/logs/
+/src/main/resources/nginx-1.18.0/temp/
+
+# --- Docker 相关的忽略项 ---
+
+# 1. 忽略挂载的数据目录 (最重要！)
+# 这里的名字要和你 docker-compose.yaml 里 volumes 挂载的本地目录名一致
+/data
+
+# 2. 忽略 Docker 构建过程中的临时文件 (如果有)
+.docker/
+
+# 3. 忽略环境变量文件 (防止密码泄露)
+.env
+
+
+
+
+

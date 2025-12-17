@@ -1,0 +1,43 @@
+services:
+  # --- MySQL 服务 ---
+  mysql:
+    image: mysql:8.0
+    container_name: hmdp-mysql
+    # 总是重启，除非手动停止
+    restart: always
+    environment:
+      # 设置 root 用户密码 (你自己改)
+      MYSQL_ROOT_PASSWORD: root
+      # 初始化时自动创建的数据库名
+      MYSQL_DATABASE: hmdp
+      # 设置时区
+      TZ: Asia/Shanghai
+    ports:
+      # 映射端口: 电脑端口:容器端口
+      - "3307:3306"
+    command:
+      # 解决 MySQL 8 连接旧版客户端的认证问题
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      # 数据持久化：将数据存在当前目录下的 data/mysql 中
+      # 这样即使删除容器，数据也不会丢
+      - ./data/mysql:/var/lib/mysql
+
+  # --- Redis 服务 ---
+  redis:
+    image: redis:8.4.0
+    container_name: hmdp-redis
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "6379:6379"
+    command:
+      # 启动 Redis 并设置密码 (你自己改)
+      - redis-server
+      - --requirepass "123456"
+    volumes:
+      # 数据持久化
+      - ./data/redis:/data
