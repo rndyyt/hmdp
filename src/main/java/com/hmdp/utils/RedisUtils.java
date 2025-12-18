@@ -121,6 +121,10 @@ public class RedisUtils {
         return r;
     }
 
+    private <T> void set(String key,T data){
+        stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(data));
+    }
+
     private <T> void setWithLogicalExpire(String key,T data) {
         RedisData redisData = new RedisData();
         redisData.setData(data);

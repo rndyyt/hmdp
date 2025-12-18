@@ -130,7 +130,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryWithLogicalExpire(Long id) {
-        Shop shop = redisUtils.queryWithLogicalExpire(CACHE_SHOP_KEY,id,Shop.class,()->getById(id));
+        Shop shop = redisUtils.queryWithLogicalExpire(CACHE_SHOP_HOT_KEY,id,Shop.class,()->getById(id));
         if(shop == null){
             return Result.fail("店铺不存在");
         }
@@ -146,7 +146,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         redisData.setData(shop);
         redisData.setExpireTime(LocalDateTime.now().plusSeconds(expireSecond));
         // 保存到缓存
-        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY+id,JSONUtil.toJsonStr(redisData));
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_HOT_KEY+id,JSONUtil.toJsonStr(redisData));
     }
 
     private void unlock(String lockKey, String tId) {
