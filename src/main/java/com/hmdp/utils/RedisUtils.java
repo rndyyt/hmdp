@@ -6,10 +6,14 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 
@@ -19,6 +23,13 @@ import static com.hmdp.utils.RedisConstants.*;
 @Component
 @RequiredArgsConstructor
 public class RedisUtils {
+    public static final String ID_PREFIX = UUID.randomUUID().toString() + "-";
+    public static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
+    static {
+        UNLOCK_SCRIPT = new DefaultRedisScript<>();
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setResultType(Long.class);
+    }
     private final StringRedisTemplate stringRedisTemplate;
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = new ThreadPoolExecutor(
             10,
@@ -43,10 +54,9 @@ public class RedisUtils {
         }
         // 获取互斥锁
         String lockKey = CACHE_MUTEX_KEY + id;
-        String threadId = "thread-" + Thread.currentThread().getId();
         R r = null;
         // 如果获取不到锁则休眠后重试
-        if(!tryLock(lockKey,threadId)){
+        if(!tryLock(lockKey)){
             try {
                 TimeUnit.MILLISECONDS.sleep(50);
                 return queryWithMutex(prefix,id,type,dbFallback);
@@ -77,7 +87,7 @@ public class RedisUtils {
         }catch (Exception e){
             throw new RuntimeException(e);
         }finally {
-            unlock(lockKey,threadId);
+            unlock(lockKey);
         }
         log.info(">>>互斥锁运行正常");
         return r;
@@ -101,9 +111,8 @@ public class RedisUtils {
         }
         // 过期则尝试获取互斥锁
         String lockKey = CACHE_MUTEX_KEY + id;
-        String threadId = "thread-" + Thread.currentThread().getId();
         // 获取成功则开启新线程进行缓存重建
-        if(tryLock(lockKey,threadId)){
+        if(tryLock(lockKey)){
             CACHE_REBUILD_EXECUTOR.submit(()->{
                 try {
                     //查询数据库
@@ -113,7 +122,7 @@ public class RedisUtils {
                 }catch (Exception e){
                     throw new RuntimeException(e);
                 }finally {
-                    unlock(lockKey,threadId);
+                    unlock(lockKey);
                 }
             });
         }
@@ -132,15 +141,16 @@ public class RedisUtils {
         stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(redisData));
     }
 
-    private void unlock(String lockKey, String threadId) {
-        String curId = stringRedisTemplate.opsForValue().get(lockKey);
-        if(threadId.equals(curId)){
-            stringRedisTemplate.delete(lockKey);
-        }
+    public void unlock(String lockKey) {
+        String threadId = ID_PREFIX+Thread.currentThread().getId();
+        stringRedisTemplate.execute(UNLOCK_SCRIPT,
+                Collections.singletonList(lockKey),
+                threadId);
     }
 
-    private boolean tryLock(String lockKey, String threadId) {
-        Boolean lock = stringRedisTemplate.opsForValue().setIfAbsent(lockKey,threadId,10, TimeUnit.SECONDS);
+    public boolean tryLock(String lockKey) {
+        String threadId = ID_PREFIX+Thread.currentThread().getId();
+        Boolean lock = stringRedisTemplate.opsForValue().setIfAbsent(lockKey,threadId,30, TimeUnit.SECONDS);
         return BooleanUtil.isTrue(lock);
     }
 }
