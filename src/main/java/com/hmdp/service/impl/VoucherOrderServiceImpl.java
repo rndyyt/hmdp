@@ -12,6 +12,8 @@ import com.hmdp.utils.RedisUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private final ISeckillVoucherService seckillVoucherService;
     private final RedisIdWorker redisIdWorker;
     private final RedisUtils redisUtils;
+    private final RedissonClient redissonClient;
 
     @Override
     public Result addSeckillVoucherOrder(Long voucherId) {
@@ -93,5 +96,38 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         this.save(voucherOrder);
 
         return Result.ok(orderId);
+    }
+
+    @Override
+    public Result addOrderWithRedisson(Long voucherId) {
+        // 使用Redisson实现一人一单
+        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+        LocalDateTime now = LocalDateTime.now();
+        if (voucher == null) {
+            return Result.fail("秒杀券不存在");
+        }
+        if(voucher.getBeginTime().isAfter(now)) {
+            return Result.fail("秒杀券尚未开始");
+        }
+        if(voucher.getEndTime().isBefore(now)) {
+            return Result.fail("秒杀券已结束");
+        }
+        if(voucher.getStock() < 1) {
+            return Result.fail("库存不足");
+        }
+        Long userId = UserHolder.getUser().getId();
+        RLock lock = redissonClient.getLock(ORDER_LOCK_USER_KEY + userId);
+        boolean isLock = lock.tryLock();
+        if (!isLock){
+            return Result.fail("请勿重复下单");
+        }
+        try {
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.addOrder(voucherId,userId);
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }finally {
+            redisUtils.unlock(ORDER_LOCK_USER_KEY + userId);
+        }
     }
 }
