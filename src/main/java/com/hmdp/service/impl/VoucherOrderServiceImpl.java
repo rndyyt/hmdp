@@ -98,9 +98,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(orderId);
     }
 
+//    @Override
+//    public Result addOrderEnhanced(Long voucherId) {
+//        // 使用Lua脚本解决超卖问题与一人一单问题
+//        Long userId = UserHolder.getUser().getId();
+//
+//    }
+
     @Override
-    public Result addOrderWithRedisson(Long voucherId) {
+    public Result addOrderEnhanced(Long voucherId) {
         // 使用Redisson实现一人一单
+        // 使用消息队列实现异步下单
         SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
         LocalDateTime now = LocalDateTime.now();
         if (voucher == null) {
@@ -130,4 +138,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             redisUtils.unlock(ORDER_LOCK_USER_KEY + userId);
         }
     }
+
+
 }

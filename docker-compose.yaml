@@ -41,3 +41,45 @@ services:
     volumes:
       # 数据持久化
       - ./data/redis:/data
+
+  # --- RocketMQ 服务 ---
+  namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: rmqnamesrv
+    ports:
+      - "9876:9876"
+    networks:
+      - rocketmq
+    command: sh mqnamesrv
+  broker:
+    image: apache/rocketmq:5.3.2
+    container_name: rmqbroker
+    ports:
+      - 10909:10909
+      - 10911:10911
+      - 10912:10912
+    environment:
+      - NAMESRV_ADDR=rmqnamesrv:9876
+    depends_on:
+      - namesrv
+    networks:
+      - rocketmq
+    command: sh mqbroker
+  proxy:
+    image: apache/rocketmq:5.3.2
+    container_name: rmqproxy
+    networks:
+      - rocketmq
+    depends_on:
+      - broker
+      - namesrv
+    ports:
+      - "8083:8083"
+      - "8084:8084"
+    restart: on-failure
+    environment:
+      - NAMESRV_ADDR=rmqnamesrv:9876
+    command: sh mqproxy
+networks:
+  rocketmq:
+    driver: bridge
