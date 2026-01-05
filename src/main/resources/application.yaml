@@ -25,3 +25,11 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug
+rocketmq:
+  # 注意：这里连的是 NameServer，不是 Proxy
+  name-server: 127.0.0.1:9876
+  producer:
+    # 必须指定生产者组名
+    group: seckill-producer-group
+    # 发送超时时间 (毫秒)
+    send-message-timeout: 3000

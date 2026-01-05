@@ -2,6 +2,7 @@ package com.hmdp.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.VoucherOrderDTO;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
@@ -11,16 +12,21 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.RedisUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.jetbrains.annotations.NotNull;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 
-import static com.hmdp.utils.RedisConstants.ORDER_LOCK_USER_KEY;
+import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
@@ -37,6 +43,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private final RedisIdWorker redisIdWorker;
     private final RedisUtils redisUtils;
     private final RedissonClient redissonClient;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final RocketMQTemplate rocketMQTemplate;
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+    }
 
     @Override
     public Result addSeckillVoucherOrder(Long voucherId) {
@@ -99,35 +113,59 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     @Override
-    public Result addOrderWithRedisson(Long voucherId) {
-        // 使用Redisson实现一人一单
-        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-        LocalDateTime now = LocalDateTime.now();
-        if (voucher == null) {
-            return Result.fail("秒杀券不存在");
-        }
-        if(voucher.getBeginTime().isAfter(now)) {
-            return Result.fail("秒杀券尚未开始");
-        }
-        if(voucher.getEndTime().isBefore(now)) {
-            return Result.fail("秒杀券已结束");
-        }
-        if(voucher.getStock() < 1) {
-            return Result.fail("库存不足");
-        }
+    public Result addOrderEnhanced(Long voucherId) {
+        // 使用Lua脚本解决超卖问题与一人一单问题
         Long userId = UserHolder.getUser().getId();
-        RLock lock = redissonClient.getLock(ORDER_LOCK_USER_KEY + userId);
-        boolean isLock = lock.tryLock();
-        if (!isLock){
-            return Result.fail("请勿重复下单");
+        Long result = stringRedisTemplate.execute(SECKILL_SCRIPT,
+                Arrays.asList(SECKILL_STOCK_KEY + voucherId, SECKILL_ORDER_KEY),
+                userId.toString());
+        int r = result.intValue();
+        if(r > 0){
+            return Result.fail(r == 1?"库存不足":"请勿重复下单");
         }
-        try {
-            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
-            return proxy.addOrder(voucherId,userId);
-        }catch (Exception e){
-            throw new RuntimeException(e);
-        }finally {
-            redisUtils.unlock(ORDER_LOCK_USER_KEY + userId);
-        }
+        // 下单成功则发送消息进入MQ,实现异步下单
+        VoucherOrderDTO voucherOrderDTO = new VoucherOrderDTO();
+        voucherOrderDTO.setId(redisIdWorker.nextId("order"));
+        voucherOrderDTO.setUserId(userId);
+        voucherOrderDTO.setVoucherId(voucherId);
+
+        rocketMQTemplate.convertAndSend("seckill_order", voucherOrderDTO);
+        return Result.ok(voucherOrderDTO.getId());
     }
+
+//    @Override
+//    public Result addOrderEnhanced(Long voucherId) {
+//        // 使用Redisson实现一人一单
+//        // 使用消息队列实现异步下单
+//        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+//        LocalDateTime now = LocalDateTime.now();
+//        if (voucher == null) {
+//            return Result.fail("秒杀券不存在");
+//        }
+//        if(voucher.getBeginTime().isAfter(now)) {
+//            return Result.fail("秒杀券尚未开始");
+//        }
+//        if(voucher.getEndTime().isBefore(now)) {
+//            return Result.fail("秒杀券已结束");
+//        }
+//        if(voucher.getStock() < 1) {
+//            return Result.fail("库存不足");
+//        }
+//        Long userId = UserHolder.getUser().getId();
+//        RLock lock = redissonClient.getLock(ORDER_LOCK_USER_KEY + userId);
+//        boolean isLock = lock.tryLock();
+//        if (!isLock){
+//            return Result.fail("请勿重复下单");
+//        }
+//        try {
+//            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+//            return proxy.addOrder(voucherId,userId);
+//        }catch (Exception e){
+//            throw new RuntimeException(e);
+//        }finally {
+//            redisUtils.unlock(ORDER_LOCK_USER_KEY + userId);
+//        }
+//    }
+
+
 }

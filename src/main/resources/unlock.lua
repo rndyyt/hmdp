@@ -8,3 +8,4 @@ if (redis.call('get', KEYS[1]) == ARGV[1]) then
 else
     -- 3. 如果不相等，返回 0 (什么都不做)
     return 0
+end
